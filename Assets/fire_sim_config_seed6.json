@@ -1,0 +1,10 @@
+{
+    "fireSimulation": {
+        "startCells": [
+            {
+                "gridIndex": 4,
+                "nodeIndex": 3090
+            }
+        ]
+    }
+}
