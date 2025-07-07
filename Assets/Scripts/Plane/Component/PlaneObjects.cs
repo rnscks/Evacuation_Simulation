@@ -127,7 +127,6 @@ public class PlaneObjects : MonoBehaviour
         return smokeDensity;
     }
 
-
     void OnDrawGizmos()
     {
         if (cost == 0.0f)

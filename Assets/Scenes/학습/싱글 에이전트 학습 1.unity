@@ -496,7 +496,7 @@ PrefabInstance:
     - target: {fileID: 7514131512895941211, guid: edd74d4aaea67c843b314598b62dad9e, type: 3}
       propertyPath: m_Model
       value: 
-      objectReference: {fileID: 5022602860645237092, guid: 2025655fb3e9a8b46963586d8a852358, type: 3}
+      objectReference: {fileID: 0}
     - target: {fileID: 7514131512895941211, guid: edd74d4aaea67c843b314598b62dad9e, type: 3}
       propertyPath: m_BehaviorName
       value: CostChange3
@@ -639,7 +639,8 @@ MonoBehaviour:
   - {fileID: 1504768317}
   - {fileID: 1017036208}
   - {fileID: 2069242566}
-  isRandomHeuristic: 1
+  isRandomHeuristic: 0
+  isCustomHeuristic: 1
 --- !u!114 &237522016
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -21741,6 +21742,10 @@ PrefabInstance:
     - target: {fileID: 1218614216257125562, guid: 6228fe7092b4f5f49aa79ac5b63151dc, type: 3}
       propertyPath: floors.Array.size
       value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 1218614216257125562, guid: 6228fe7092b4f5f49aa79ac5b63151dc, type: 3}
+      propertyPath: isRandomInitialize
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 1218614216257125562, guid: 6228fe7092b4f5f49aa79ac5b63151dc, type: 3}
       propertyPath: grids.Array.data[0]

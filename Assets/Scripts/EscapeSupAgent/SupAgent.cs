@@ -4,6 +4,8 @@ using UnityEngine;
 using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Sensors;
+using System.Net.Http.Headers;
+using System.Text.RegularExpressions;
 
 public class SupAgent : Agent
 {
@@ -11,6 +13,7 @@ public class SupAgent : Agent
     public EscapeAgentManager escapeAgentManager;
     public List<GameObject> floors = new List<GameObject>();
     public bool isRandomHeuristic = false;
+    public bool isCustomHeuristic = false;
     private List<GameObject> planes = new List<GameObject>();
 
     public override void Initialize() { }
@@ -69,134 +72,194 @@ public class SupAgent : Agent
             int action = UnityEngine.Random.Range(0, 30);
             actionsOut.DiscreteActions.Array[0] = action;
         }
+        else if (isCustomHeuristic == true)
+        {
+            CustomHeuristic(actionsOut);
+        }
         else
         {
             actionsOut.DiscreteActions.Array[0] = 29;
         }
     }
 
+    private void CustomHeuristic(in ActionBuffers actionsOut)
+    {
+        float maxDangerScore = float.MinValue;
+        for (int i = 0; i <= maxSectionNumber; i++)
+        {
+            float cost = CalPlaneCost(i);
+            if (cost <= 0.5f) continue;
+
+            float temperature = CalSectionTemperature(i);
+            float visibleDistance = CalSectionVisibleDistance(i);
+            float smokeDensity = CalSectionSmokeDensity(i);
+            float crowdDensity = CalCrowdDensity(i);
+
+            float dangerScore = temperature + (1 - visibleDistance) + smokeDensity + crowdDensity + CalBasicDangerScore(i);
+            Debug.Log($"Section {i}: Temperature={temperature}, VisibleDistance={visibleDistance}, SmokeDensity={smokeDensity}, CrowdDensity={crowdDensity}, DangerScore={dangerScore}");
+            if (dangerScore < 0.4f) continue;
+            if (dangerScore > maxDangerScore)
+            {
+                maxDangerScore = dangerScore;
+                actionsOut.DiscreteActions.Array[0] = i;
+            }
+        }
+
+        if (maxDangerScore == float.MinValue)
+        {
+            actionsOut.DiscreteActions.Array[0] = 29; // Default action if no valid section found
+        }
+    }
+
     private float[] CollectFireObsArray()
     {
         List<float> obsList = new List<float>();
-        List<PlaneObjects> planeObjectsList = new List<PlaneObjects>();
-        foreach (GameObject plane in planes)
-        {
-            PlaneObjects planeObject = plane.GetComponent<PlaneObjects>();
-            planeObjectsList.Add(planeObject);
-        }
-
         for (int i = 0; i <= maxSectionNumber; i++)
         {
-            float totalArea = 0f;
-            float totalTemperature = 0f;
-            float totalSmokeDensity = 0f;
-            float totalVisibleDistance = 0f;
-
-            foreach (PlaneObjects planeObject in planeObjectsList)
-            {
-                if (planeObject.sectionNumber == i)
-                {
-                    MeshRenderer meshRenderer = planeObject.GetComponent<MeshRenderer>();
-                    Vector3 minCorner = meshRenderer.bounds.min;
-                    Vector3 maxCorner = meshRenderer.bounds.max;
-                    float area = (maxCorner.x - minCorner.x) * (maxCorner.z - minCorner.z);
-                    totalArea += area;
-                    totalTemperature += planeObject.GetTemperature() * area;
-                    totalSmokeDensity += planeObject.GetSmokeDensity() * area;
-                    totalVisibleDistance += planeObject.GetVisibleDistance() * area;
-                }
-            }
-            float maxTemperature = 100f; // Assuming maximum temperature is 1000 degrees
-            float maxSmokeDensity = 2800f; // Assuming maximum smoke density is 1
-            float maxVisibleDistance = 30f; // Assuming maximum visible distance is 30 meters
-            obsList.Add((totalTemperature / totalArea) / maxTemperature);
-            obsList.Add((totalVisibleDistance / totalArea) / maxVisibleDistance);
-            obsList.Add((totalSmokeDensity / totalArea) / maxSmokeDensity);
+            float temperature = CalSectionTemperature(i);
+            float visibleDistance = CalSectionVisibleDistance(i);
+            float smokeDensity = CalSectionSmokeDensity(i);
+            obsList.Add(temperature);
+            obsList.Add(visibleDistance);
+            obsList.Add(smokeDensity);
         }
         return obsList.ToArray();
     }
-
-    private float[] CollectPlaneCostArray()
-    {
-        List<float> obsList = new List<float>();
-        List<PlaneObjects> planeObjectsList = new List<PlaneObjects>();
-        foreach (GameObject plane in planes)
-        {
-            PlaneObjects planeObject = plane.GetComponent<PlaneObjects>();
-            planeObjectsList.Add(planeObject);
-        }
-
-        for (int i = 0; i <= maxSectionNumber; i++)
-        {
-            foreach (PlaneObjects planeObject in planeObjectsList)
-            {
-                if (planeObject.sectionNumber == i)
-                {
-                    obsList.Add(planeObject.cost);
-                    break;
-                }
-            }
-        }
-
-        return obsList.ToArray();
-    }
-
     private float[] CollectEscapeAgentObsArray()
     {
         List<float> obsList = new List<float>();
-        List<PlaneObjects> planeObjectsList = new List<PlaneObjects>();
-        foreach (GameObject plane in planes)
-        {
-            PlaneObjects planeObject = plane.GetComponent<PlaneObjects>();
-            planeObjectsList.Add(planeObject);
-        }
-        float[] numberOfAgents = new float[maxSectionNumber + 1];
-        float[] xdirection = new float[maxSectionNumber + 1];
-        float[] zdirection = new float[maxSectionNumber + 1];
-        float[] ydirection = new float[maxSectionNumber + 1];
-
-        List<GameObject> escapeAgents = escapeAgentManager.GetEscapeAgents();
-        foreach (GameObject agent in escapeAgents)
-        {
-            EscapeAgentController controller = agent.GetComponent<EscapeAgentController>();
-            int sectionNumber = controller.GetSectionNumber();
-            if (sectionNumber < 0)
-            {
-                continue;
-            }
-            Vector3 direction = controller.GetNormalizedDirectionToDestination();
-
-            xdirection[sectionNumber] += direction.x;
-            zdirection[sectionNumber] += direction.z;
-            ydirection[sectionNumber] += direction.y;
-            numberOfAgents[sectionNumber] += 1f;
-        }
-
         for (int i = 0; i <= maxSectionNumber; i++)
         {
-            float totalArea = 0f;
-            float totalAgents = numberOfAgents[i];
-            foreach (PlaneObjects planeObject in planeObjectsList)
-            {
-                if (planeObject.sectionNumber == i)
-                {
-                    MeshRenderer meshRenderer = planeObject.GetComponent<MeshRenderer>();
-                    Vector3 minCorner = meshRenderer.bounds.min;
-                    Vector3 maxCorner = meshRenderer.bounds.max;
-                    float area = (maxCorner.x - minCorner.x) * (maxCorner.z - minCorner.z);
-                    totalArea += area;
-                }
-            }
-            if (totalArea > 0f)
-            {
-                obsList.Add(totalAgents / totalArea);
-            }
-            else
-            {
-                obsList.Add(0f);
-            }
+            float crowdDensity = CalCrowdDensity(i);
+            obsList.Add(crowdDensity);
         }
 
         return obsList.ToArray();
+    }
+    private float[] CollectPlaneCostArray()
+    {
+        List<float> obsList = new List<float>();
+        for (int i = 0; i <= maxSectionNumber; i++)
+        {
+            float cost = CalPlaneCost(i);
+            obsList.Add(cost);
+        }
+
+        return obsList.ToArray();
+    }
+    private float CalSectionTemperature(int sectionNumber)
+    {
+        float totalTemperature = 0f;
+        float totalArea = 0f;
+
+        foreach (GameObject plane in planes)
+        {
+            PlaneObjects planeObject = plane.GetComponent<PlaneObjects>();
+            if (planeObject.sectionNumber == sectionNumber)
+            {
+                MeshRenderer meshRenderer = planeObject.GetComponent<MeshRenderer>();
+                Vector3 minCorner = meshRenderer.bounds.min;
+                Vector3 maxCorner = meshRenderer.bounds.max;
+                float area = (maxCorner.x - minCorner.x) * (maxCorner.z - minCorner.z);
+                totalArea += area;
+                totalTemperature += planeObject.GetTemperature() * area;
+            }
+        }
+
+        float result = totalArea > 0f ? totalTemperature / totalArea : 0f;
+        result = result > 0f ? result / 100.0f : 0f;
+        return result;
+    }
+    private float CalSectionVisibleDistance(int sectionNumber)
+    {
+        float totalVisibleDistance = 0f;
+        float totalArea = 0f;
+
+        foreach (GameObject plane in planes)
+        {
+            PlaneObjects planeObject = plane.GetComponent<PlaneObjects>();
+            if (planeObject.sectionNumber == sectionNumber)
+            {
+                MeshRenderer meshRenderer = planeObject.GetComponent<MeshRenderer>();
+                Vector3 minCorner = meshRenderer.bounds.min;
+                Vector3 maxCorner = meshRenderer.bounds.max;
+                float area = (maxCorner.x - minCorner.x) * (maxCorner.z - minCorner.z);
+                totalArea += area;
+                totalVisibleDistance += planeObject.GetVisibleDistance() * area;
+            }
+        }
+
+        float result = totalArea > 0f ? totalVisibleDistance / totalArea : 0f;
+        result = result > 0f ? result / 30.0f : 0f;
+        return result;
+    }
+    private float CalSectionSmokeDensity(int sectionNumber)
+    {
+        float totalSmokeDensity = 0f;
+        float totalArea = 0f;
+
+        foreach (GameObject plane in planes)
+        {
+            PlaneObjects planeObject = plane.GetComponent<PlaneObjects>();
+            if (planeObject.sectionNumber == sectionNumber)
+            {
+                MeshRenderer meshRenderer = planeObject.GetComponent<MeshRenderer>();
+                Vector3 minCorner = meshRenderer.bounds.min;
+                Vector3 maxCorner = meshRenderer.bounds.max;
+                float area = (maxCorner.x - minCorner.x) * (maxCorner.z - minCorner.z);
+                totalArea += area;
+                totalSmokeDensity += planeObject.GetSmokeDensity() * area;
+            }
+        }
+
+        float result = totalArea > 0f ? totalSmokeDensity / totalArea : 0f;
+        result = result > 0f ? result / 2800.0f : 0f; // Normalize to a range of 0 to 1 
+        return result;
+    }
+    private float CalCrowdDensity(int sectionNumber)
+    {
+        float totalAgentCounts = escapeAgentManager.nAgent;
+        float agentCounts = 0f;
+
+
+        foreach (GameObject agent in escapeAgentManager.GetEscapeAgents())
+        {
+            EscapeAgentController controller = agent.GetComponent<EscapeAgentController>();
+            if (controller.GetSectionNumber() == sectionNumber)
+            {
+                agentCounts++;
+            }
+        }
+
+        return totalAgentCounts > 0f ? agentCounts / totalAgentCounts : 0f;
+    }
+    private float CalPlaneCost(int sectionNumber)
+    {
+        foreach (GameObject plane in planes)
+        {
+            PlaneObjects planeObject = plane.GetComponent<PlaneObjects>();
+            if (planeObject.sectionNumber == sectionNumber)
+            {
+                return planeObject.cost;
+            }
+        }
+        return 1.0f;
+    }
+    private float CalBasicDangerScore(int sectionNumber)
+    {
+        foreach (GameObject plane in planes)
+        {
+            PlaneObjects planeObject = plane.GetComponent<PlaneObjects>();
+            if (planeObject.sectionNumber != sectionNumber) continue;
+            string floorName = planeObject.gameObject.name;
+            Match match = Regex.Match(floorName, @"^F(\d+)");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int floor))
+            {
+                return floor * 0.1f;
+            }
+            Debug.LogWarning($"Failed to parse floor number from {floorName}");
+        }
+
+        return 0.0f;
     }
 }
